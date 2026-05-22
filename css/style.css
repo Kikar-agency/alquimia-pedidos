@@ -426,11 +426,233 @@ label { display: block; margin: 0.5rem 0 0.25rem; font-size: 0.9rem; color: var(
     to { transform: translateY(0); opacity: 1; }
 }
 
-/* ============== RESPONSIVE ============== */
+/* ============== MODAL ============== */
+.modal-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    padding: 1rem;
+    animation: fadeIn 0.15s ease;
+}
+
+.modal-box {
+    background: white;
+    border-radius: 12px;
+    padding: 1.75rem;
+    max-width: 500px;
+    width: 100%;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.modal-box h3 {
+    font-size: 1.2rem;
+    margin-bottom: 0.4rem;
+}
+
+.modal-subtitulo {
+    color: var(--gray-500);
+    font-size: 0.9rem;
+    margin-bottom: 1.25rem;
+}
+
+.modal-section {
+    margin-bottom: 1rem;
+}
+
+.modal-label {
+    display: block;
+    font-size: 0.9rem;
+    font-weight: 500;
+    margin-bottom: 0.4rem;
+    color: var(--gray-700);
+}
+
+.modal-divisor {
+    text-align: center;
+    margin: 1.25rem 0;
+    position: relative;
+    color: var(--gray-500);
+    font-size: 0.85rem;
+}
+
+.modal-divisor::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--gray-200);
+    z-index: 0;
+}
+
+.modal-divisor span {
+    background: white;
+    padding: 0 0.75rem;
+    position: relative;
+    z-index: 1;
+}
+
+.modal-acciones {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: flex-end;
+    margin-top: 1.25rem;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* ============== RESPONSIVE - MOBILE ============== */
 @media (max-width: 640px) {
-    .app-header, .app-nav, .app-main { padding-left: 1rem; padding-right: 1rem; }
-    .app-header { flex-direction: column; gap: 0.5rem; align-items: flex-start; }
-    .row { flex-direction: column; }
-    .filtros { flex-direction: column; align-items: stretch; }
-    .pedido-acciones .btn { flex: 1; justify-content: center; }
+    /* Layout general */
+    .app-header,
+    .app-main {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+
+    /* Header con email arriba a la derecha pero más compacto */
+    .app-header {
+        padding: 0.75rem 1rem;
+    }
+
+    .app-header h1 {
+        font-size: 1.25rem;
+    }
+
+    .user-info {
+        font-size: 0.8rem;
+        gap: 0.5rem;
+    }
+
+    #user-email {
+        max-width: 140px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    /* Nav con scroll horizontal y botones más cortos */
+    .app-nav {
+        padding: 0 0.5rem;
+        gap: 0;
+    }
+
+    .nav-btn {
+        padding: 0.75rem 0.75rem;
+        font-size: 0.85rem;
+    }
+
+    /* Main content */
+    .app-main {
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+    }
+
+    .section h2 {
+        font-size: 1.2rem;
+    }
+
+    /* Forms en columna */
+    .row {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    /* Filtros en columna pero compactos */
+    .filtros {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 0.75rem;
+        gap: 0.5rem;
+    }
+
+    .filtros > input,
+    .filtros > select {
+        min-width: 0;
+        width: 100%;
+    }
+
+    /* Cards de pedido más compactas */
+    .pedido-card {
+        padding: 1rem;
+    }
+
+    .pedido-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+
+    .pedido-header > div:last-child {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+    }
+
+    .pedido-info {
+        font-size: 0.85rem;
+    }
+
+    .pedido-dni {
+        display: block;
+        margin-left: 0;
+        margin-top: 0.25rem;
+    }
+
+    /* Botones de acción ocupan todo el ancho y se apilan */
+    .pedido-acciones {
+        flex-direction: column;
+        gap: 0.4rem;
+    }
+
+    .pedido-acciones .btn {
+        width: 100%;
+        justify-content: center;
+        padding: 0.7rem;
+    }
+
+    /* Cards generales con menos padding */
+    .card {
+        padding: 1rem;
+    }
+
+    /* Tabla de clientes con scroll horizontal */
+    .tabla-clientes {
+        font-size: 0.85rem;
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+    }
+
+    /* Toast desde abajo en el centro */
+    .toast {
+        bottom: 1rem;
+        right: 1rem;
+        left: 1rem;
+        text-align: center;
+    }
+
+    /* Modal full screen friendly */
+    .modal-box {
+        padding: 1.25rem;
+    }
+
+    .modal-acciones {
+        flex-direction: column-reverse;
+    }
+
+    .modal-acciones .btn {
+        width: 100%;
+        justify-content: center;
+    }
 }
