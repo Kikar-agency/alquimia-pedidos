@@ -495,22 +495,38 @@ async function confirmarPago(id) {
 }
 
 // ============================================
-// VER ARCHIVOS (factura/guía)
+// VER ARCHIVOS (factura/guía/comprobante)
 // ============================================
 async function verArchivo(bucket, filename) {
     if (!filename) {
         toast('No hay archivo', 'error');
         return;
     }
+
+    // 🔥 TRUCO: abrir la pestaña ANTES de la operación async
+    // Si la abrimos después de un await, los navegadores bloquean el popup
+    // porque ya no se considera "acción directa del usuario".
+    const nuevaPestana = window.open('', '_blank');
+    if (!nuevaPestana) {
+        toast('Tu navegador bloqueó la apertura. Habilitá popups para este sitio.', 'error');
+        return;
+    }
+    // Mostrar "Cargando..." mientras se genera la URL firmada
+    nuevaPestana.document.write('<p style="font-family:sans-serif;padding:2rem;">Cargando archivo...</p>');
+
     // Generar URL firmada por 1 hora
     const { data, error } = await supabaseClient.storage
         .from(bucket)
         .createSignedUrl(filename, 3600);
+
     if (error) {
+        nuevaPestana.close();
         toast('Error al obtener archivo: ' + error.message, 'error');
         return;
     }
-    window.open(data.signedUrl, '_blank');
+
+    // Redirigir la pestaña ya abierta al archivo
+    nuevaPestana.location.href = data.signedUrl;
 }
 
 // ============================================
