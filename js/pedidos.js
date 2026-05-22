@@ -249,8 +249,11 @@ function renderPedidoCard(p, estado) {
 
     let acciones = '';
     if (estado === 'pendiente_aprobacion') {
+        const labelAprobar = p.metodo_pago === 'anticipado'
+            ? '✅ Aprobar (subir comprobante)'
+            : '✅ Aprobar';
         acciones = `
-            <button class="btn btn-primary" onclick="aprobarPedido(${p.id})">✅ Aprobar</button>
+            <button class="btn btn-primary" onclick="aprobarPedido(${p.id}, '${p.metodo_pago}')">${labelAprobar}</button>
             <button class="btn btn-secondary" onclick="toggleUrgente(${p.id}, ${!p.es_urgente})">
                 ${p.es_urgente ? '⬇ Quitar urgencia' : '🔥 Marcar urgente'}
             </button>
@@ -272,11 +275,23 @@ function renderPedidoCard(p, estado) {
         `;
     } else if (estado === 'finalizado') {
         if (p.pago_retiro_pendiente) {
-            acciones = `<button class="btn btn-primary" onclick="confirmarPago(${p.id})">💰 Confirmar pago</button>`;
+            acciones = `<button class="btn btn-primary" onclick="confirmarPago(${p.id})">💰 Confirmar pago (subir comprobante)</button>`;
         }
         if (p.guia_url) {
             acciones += `<button class="btn btn-secondary" onclick="verArchivo('guias', '${p.guia_url}')">📄 Ver guía</button>`;
         }
+    }
+
+    // Botón ver comprobante (en todos los estados si ya existe)
+    if (p.comprobante_pago_url) {
+        acciones += `<button class="btn btn-secondary" onclick="verArchivo('comprobantes', '${p.comprobante_pago_url}')">💵 Ver comprobante</button>`;
+    }
+
+    // Badge "sin comprobante" si aplica
+    let badgeSinComprob = '';
+    if (p.sin_comprobante) {
+        const tooltip = (p.sin_comprobante_nota || '').replace(/"/g, '&quot;');
+        badgeSinComprob = `<span class="badge badge-warning" title="${tooltip}">⚠️ Sin comprobante</span>`;
     }
 
     // Historial de acciones
@@ -297,6 +312,7 @@ function renderPedidoCard(p, estado) {
                 <div>
                     ${urgenteBadge}
                     ${pagoRetiroBadge}
+                    ${badgeSinComprob}
                     ${antiguedadBadge}
                 </div>
             </div>
@@ -318,22 +334,57 @@ function renderPedidoCard(p, estado) {
 // ============================================
 // ACCIONES SOBRE PEDIDOS
 // ============================================
-async function aprobarPedido(id) {
-    if (!confirm('¿Aprobar pedido #' + id + '?')) return;
-    const { error } = await supabaseClient
-        .from('pedidos')
-        .update({
-            estado: 'aprobado',
-            aprobado_by: currentUser.id,
-            aprobado_at: new Date().toISOString()
-        })
-        .eq('id', id);
-    if (error) {
-        toast('Error: ' + error.message, 'error');
+async function aprobarPedido(id, metodoPago) {
+    // Si es al_recibir, aprobamos directo (sin pedir comprobante)
+    if (metodoPago === 'al_recibir') {
+        if (!confirm('¿Aprobar pedido #' + id + '?')) return;
+        const { error } = await supabaseClient
+            .from('pedidos')
+            .update({
+                estado: 'aprobado',
+                aprobado_by: currentUser.id,
+                aprobado_at: new Date().toISOString()
+            })
+            .eq('id', id);
+        if (error) {
+            toast('Error: ' + error.message, 'error');
+            return;
+        }
+        toast(`✅ Pedido #${id} aprobado`);
+        cargarPedidos('pendiente_aprobacion');
         return;
     }
-    toast(`✅ Pedido #${id} aprobado`);
-    cargarPedidos('pendiente_aprobacion');
+
+    // Si es anticipado, abrir modal para subir comprobante
+    abrirModalComprobante({
+        pedidoId: id,
+        titulo: `Aprobar pedido #${id}`,
+        subtitulo: 'Subí el comprobante de pago para aprobar.',
+        onConfirmar: async ({ comprobanteFilename, sinComprobante, sinComprobanteNota }) => {
+            const updateData = {
+                estado: 'aprobado',
+                aprobado_by: currentUser.id,
+                aprobado_at: new Date().toISOString(),
+                sin_comprobante: sinComprobante,
+                sin_comprobante_nota: sinComprobante ? sinComprobanteNota : null
+            };
+            if (comprobanteFilename) {
+                updateData.comprobante_pago_url = comprobanteFilename.url;
+                updateData.comprobante_pago_filename = comprobanteFilename.original;
+            }
+            const { error } = await supabaseClient
+                .from('pedidos')
+                .update(updateData)
+                .eq('id', id);
+            if (error) {
+                toast('Error: ' + error.message, 'error');
+                return false;
+            }
+            toast(`✅ Pedido #${id} aprobado`);
+            cargarPedidos('pendiente_aprobacion');
+            return true;
+        }
+    });
 }
 
 async function toggleUrgente(id, valor) {
@@ -414,17 +465,33 @@ async function finalizarPedido(id) {
 }
 
 async function confirmarPago(id) {
-    if (!confirm('¿Confirmar que el pedido #' + id + ' fue pagado?')) return;
-    const { error } = await supabaseClient
-        .from('pedidos')
-        .update({ pago_retiro_pendiente: false })
-        .eq('id', id);
-    if (error) {
-        toast('Error: ' + error.message, 'error');
-        return;
-    }
-    toast('💰 Pago confirmado');
-    cargarPedidos('finalizado');
+    abrirModalComprobante({
+        pedidoId: id,
+        titulo: `Confirmar pago - Pedido #${id}`,
+        subtitulo: 'Subí el comprobante del pago recibido.',
+        onConfirmar: async ({ comprobanteFilename, sinComprobante, sinComprobanteNota }) => {
+            const updateData = {
+                pago_retiro_pendiente: false,
+                sin_comprobante: sinComprobante,
+                sin_comprobante_nota: sinComprobante ? sinComprobanteNota : null
+            };
+            if (comprobanteFilename) {
+                updateData.comprobante_pago_url = comprobanteFilename.url;
+                updateData.comprobante_pago_filename = comprobanteFilename.original;
+            }
+            const { error } = await supabaseClient
+                .from('pedidos')
+                .update(updateData)
+                .eq('id', id);
+            if (error) {
+                toast('Error: ' + error.message, 'error');
+                return false;
+            }
+            toast('💰 Pago confirmado');
+            cargarPedidos('finalizado');
+            return true;
+        }
+    });
 }
 
 // ============================================
@@ -517,3 +584,118 @@ document.addEventListener('DOMContentLoaded', () => {
     const filtroClientes = document.getElementById('filtro-clientes');
     if (filtroClientes) filtroClientes.addEventListener('input', cargarClientes);
 });
+
+// ============================================
+// MODAL DE COMPROBANTE DE PAGO
+// ============================================
+function abrirModalComprobante({ pedidoId, titulo, subtitulo, onConfirmar }) {
+    // Crear el modal dinámicamente
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+        <div class="modal-box">
+            <h3>${titulo}</h3>
+            <p class="modal-subtitulo">${subtitulo}</p>
+
+            <div class="modal-section">
+                <label class="modal-label">📎 Comprobante de pago (PDF, JPG o PNG):</label>
+                <input type="file" id="modal-comprobante-file" accept=".pdf,.jpg,.jpeg,.png">
+            </div>
+
+            <div class="modal-divisor"><span>o</span></div>
+
+            <div class="modal-section">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="modal-sin-comprobante">
+                    <span>No tengo comprobante (avanzar igual)</span>
+                </label>
+                <textarea id="modal-sin-comprobante-nota"
+                    placeholder="Explicá por qué no hay comprobante (obligatorio si tildás la casilla)..."
+                    rows="2" style="margin-top: 0.5rem; display: none;"></textarea>
+            </div>
+
+            <div class="modal-acciones">
+                <button class="btn btn-secondary" id="modal-cancelar">Cancelar</button>
+                <button class="btn btn-primary" id="modal-confirmar">Confirmar</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    const fileInput = modal.querySelector('#modal-comprobante-file');
+    const sinComprobanteCheck = modal.querySelector('#modal-sin-comprobante');
+    const sinComprobanteNota = modal.querySelector('#modal-sin-comprobante-nota');
+    const btnConfirmar = modal.querySelector('#modal-confirmar');
+    const btnCancelar = modal.querySelector('#modal-cancelar');
+
+    // Mostrar/ocultar nota según checkbox
+    sinComprobanteCheck.addEventListener('change', () => {
+        sinComprobanteNota.style.display = sinComprobanteCheck.checked ? 'block' : 'none';
+        // Si tilda la casilla, deshabilitar el file input (mutuamente excluyente)
+        fileInput.disabled = sinComprobanteCheck.checked;
+        if (sinComprobanteCheck.checked) fileInput.value = '';
+    });
+
+    // Si suben archivo, destildar la casilla
+    fileInput.addEventListener('change', () => {
+        if (fileInput.files.length > 0) {
+            sinComprobanteCheck.checked = false;
+            sinComprobanteNota.style.display = 'none';
+        }
+    });
+
+    // Cancelar
+    btnCancelar.addEventListener('click', () => modal.remove());
+
+    // Confirmar
+    btnConfirmar.addEventListener('click', async () => {
+        const file = fileInput.files[0];
+        const sinComprobante = sinComprobanteCheck.checked;
+        const nota = sinComprobanteNota.value.trim();
+
+        // Validación: o archivo o casilla
+        if (!file && !sinComprobante) {
+            toast('Subí un comprobante o tildá "No tengo comprobante"', 'error');
+            return;
+        }
+        // Si tildó la casilla, exigir nota
+        if (sinComprobante && !nota) {
+            toast('Si no hay comprobante, explicá por qué', 'error');
+            return;
+        }
+
+        btnConfirmar.disabled = true;
+        btnConfirmar.textContent = 'Procesando...';
+
+        let comprobanteFilename = null;
+
+        // Subir archivo si hay
+        if (file) {
+            const filename = `comprobante_${pedidoId}_${Date.now()}_${sanitizeFilename(file.name)}`;
+            const { error: upErr } = await supabaseClient.storage
+                .from('comprobantes')
+                .upload(filename, file);
+            if (upErr) {
+                toast('Error al subir comprobante: ' + upErr.message, 'error');
+                btnConfirmar.disabled = false;
+                btnConfirmar.textContent = 'Confirmar';
+                return;
+            }
+            comprobanteFilename = { url: filename, original: file.name };
+        }
+
+        // Ejecutar callback
+        const ok = await onConfirmar({
+            comprobanteFilename,
+            sinComprobante,
+            sinComprobanteNota: nota
+        });
+
+        if (ok) {
+            modal.remove();
+        } else {
+            btnConfirmar.disabled = false;
+            btnConfirmar.textContent = 'Confirmar';
+        }
+    });
+}
