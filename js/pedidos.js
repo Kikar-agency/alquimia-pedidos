@@ -6,6 +6,19 @@
 let clienteSeleccionado = null;
 
 // ============================================
+// HELPER: Sanitizar nombre de archivo
+// ============================================
+// Supabase Storage rechaza espacios, acentos, paréntesis, etc.
+// Esto deja solo letras, números, puntos, guiones y guiones bajos.
+function sanitizeFilename(name) {
+    return name
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // sacar acentos
+        .replace(/\s+/g, '_')                              // espacios → guion bajo
+        .replace(/[^a-zA-Z0-9._-]/g, '')                   // sacar todo lo raro
+        .toLowerCase();
+}
+
+// ============================================
 // NUEVO PEDIDO
 // ============================================
 function initNuevoPedido() {
@@ -105,7 +118,7 @@ async function crearPedido() {
             return;
         }
 
-        const filename = `${Date.now()}_${file.name}`;
+        const filename = `${Date.now()}_${sanitizeFilename(file.name)}`;
         const { error: uploadError } = await supabaseClient.storage
             .from('facturas')
             .upload(filename, file);
@@ -340,7 +353,7 @@ async function despacharPedido(id, fileInput) {
     const file = fileInput.files[0];
     if (!file) return;
 
-    const filename = `guia_${id}_${Date.now()}_${file.name}`;
+    const filename = `guia_${id}_${Date.now()}_${sanitizeFilename(file.name)}`;
     const { error: upErr } = await supabaseClient.storage
         .from('guias')
         .upload(filename, file);
