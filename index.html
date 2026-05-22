@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alquimia - Sistema de Pedidos</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <!-- ============== LOGIN ============== -->
+    <div id="login-screen" class="login-screen">
+        <div class="login-box">
+            <h1>🧪 Alquimia</h1>
+            <p class="subtitle">Sistema de Pedidos</p>
+            <form id="login-form">
+                <input type="email" id="login-email" placeholder="Email" required>
+                <input type="password" id="login-password" placeholder="Contraseña" required>
+                <button type="submit" class="btn btn-primary btn-block">Ingresar</button>
+                <div id="login-error" class="error-msg"></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ============== APP ============== -->
+    <div id="app-screen" class="app-screen" style="display:none;">
+        <header class="app-header">
+            <h1>🧪 Alquimia</h1>
+            <div class="user-info">
+                <span id="user-email"></span>
+                <button id="logout-btn" class="btn btn-link">Salir</button>
+            </div>
+        </header>
+
+        <nav class="app-nav">
+            <button class="nav-btn" data-section="nuevo">➕ Nuevo</button>
+            <button class="nav-btn active" data-section="pendientes">⏳ Pendientes</button>
+            <button class="nav-btn" data-section="aprobados">✅ Aprobados</button>
+            <button class="nav-btn" data-section="despachados">📦 Despachados</button>
+            <button class="nav-btn" data-section="finalizados">🏁 Finalizados</button>
+            <button class="nav-btn" data-section="clientes">👥 Clientes</button>
+        </nav>
+
+        <main class="app-main">
+
+            <!-- ============== NUEVO PEDIDO ============== -->
+            <section id="section-nuevo" class="section" style="display:none;">
+                <h2>Nuevo pedido</h2>
+                <form id="form-nuevo-pedido">
+
+                    <div class="card">
+                        <h3>1. Cliente</h3>
+                        <div class="row">
+                            <input type="text" id="input-dni" placeholder="DNI del cliente" required>
+                            <button type="button" id="btn-buscar-cliente" class="btn btn-secondary">🔍 Buscar</button>
+                        </div>
+                        <div id="cliente-encontrado" style="display:none; margin-top:1rem;"></div>
+                        <div id="cliente-nuevo" style="display:none; margin-top:1rem;">
+                            <p class="info-msg">Cliente no encontrado. Completá los datos para registrarlo:</p>
+                            <input type="text" id="nuevo-dni" placeholder="DNI" required>
+                            <input type="text" id="nuevo-nombre" placeholder="Nombre completo" required>
+                            <div class="row">
+                                <input type="text" id="nuevo-provincia" placeholder="Provincia">
+                                <input type="text" id="nuevo-ciudad" placeholder="Ciudad">
+                            </div>
+                            <input type="text" id="nuevo-direccion" placeholder="Dirección">
+                            <div class="row">
+                                <input type="text" id="nuevo-cp" placeholder="CP">
+                                <select id="nuevo-envio">
+                                    <option value="">Envío preferido...</option>
+                                    <option value="VIA CARGO">VIA CARGO</option>
+                                    <option value="ANDREANI">ANDREANI</option>
+                                    <option value="COMISIONISTA">COMISIONISTA</option>
+                                    <option value="BUSPACK">BUSPACK</option>
+                                    <option value="OTRO">OTRO</option>
+                                </select>
+                            </div>
+                            <div class="row">
+                                <input type="text" id="nuevo-telefono" placeholder="Teléfono">
+                                <input type="email" id="nuevo-email" placeholder="Email">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>2. Datos del pedido</h3>
+                        <label>Factura (PDF, JPG o Excel):</label>
+                        <input type="file" id="input-factura" accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls" required>
+
+                        <div class="row">
+                            <select id="input-metodo-envio">
+                                <option value="">Método de envío (usa preferido del cliente si vacío)</option>
+                                <option value="VIA CARGO">VIA CARGO</option>
+                                <option value="ANDREANI">ANDREANI</option>
+                                <option value="COMISIONISTA">COMISIONISTA</option>
+                                <option value="BUSPACK">BUSPACK</option>
+                                <option value="OTRO">OTRO</option>
+                            </select>
+
+                            <select id="input-metodo-pago" required>
+                                <option value="anticipado">Pago anticipado</option>
+                                <option value="al_recibir">Pago al recibir / retiro</option>
+                            </select>
+                        </div>
+
+                        <textarea id="input-nota" placeholder="Nota / observaciones (opcional)" rows="2"></textarea>
+
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="input-urgente">
+                            🔥 Marcar como urgente
+                        </label>
+                    </div>
+
+                    <button type="submit" id="btn-crear-pedido" class="btn btn-primary btn-block" style="display:none;">
+                        Crear pedido
+                    </button>
+                </form>
+            </section>
+
+            <!-- ============== PENDIENTES ============== -->
+            <section id="section-pendientes" class="section">
+                <h2>⏳ Pendientes de aprobación</h2>
+                <div class="filtros">
+                    <input type="text" id="filtro-cliente-pendientes" placeholder="🔍 Cliente o DNI">
+                    <select id="filtro-envio-pendientes">
+                        <option value="">Todos los envíos</option>
+                        <option value="VIA CARGO">VIA CARGO</option>
+                        <option value="ANDREANI">ANDREANI</option>
+                        <option value="COMISIONISTA">COMISIONISTA</option>
+                        <option value="BUSPACK">BUSPACK</option>
+                        <option value="OTRO">OTRO</option>
+                    </select>
+                </div>
+                <div id="lista-pendientes" class="lista-pedidos"></div>
+            </section>
+
+            <!-- ============== APROBADOS ============== -->
+            <section id="section-aprobados" class="section" style="display:none;">
+                <h2>✅ Aprobados (listos para fabricar/despachar)</h2>
+                <p class="hint">Urgentes arriba, después por antigüedad (más viejos primero).</p>
+                <div class="filtros">
+                    <input type="text" id="filtro-cliente-aprobados" placeholder="🔍 Cliente o DNI">
+                    <select id="filtro-envio-aprobados">
+                        <option value="">Todos los envíos</option>
+                        <option value="VIA CARGO">VIA CARGO</option>
+                        <option value="ANDREANI">ANDREANI</option>
+                        <option value="COMISIONISTA">COMISIONISTA</option>
+                        <option value="BUSPACK">BUSPACK</option>
+                        <option value="OTRO">OTRO</option>
+                    </select>
+                </div>
+                <div id="lista-aprobados" class="lista-pedidos"></div>
+            </section>
+
+            <!-- ============== DESPACHADOS ============== -->
+            <section id="section-despachados" class="section" style="display:none;">
+                <h2>📦 Despachados</h2>
+                <div class="filtros">
+                    <input type="text" id="filtro-cliente-despachados" placeholder="🔍 Cliente o DNI">
+                    <select id="filtro-envio-despachados">
+                        <option value="">Todos los envíos</option>
+                        <option value="VIA CARGO">VIA CARGO</option>
+                        <option value="ANDREANI">ANDREANI</option>
+                        <option value="COMISIONISTA">COMISIONISTA</option>
+                        <option value="BUSPACK">BUSPACK</option>
+                        <option value="OTRO">OTRO</option>
+                    </select>
+                </div>
+                <div id="lista-despachados" class="lista-pedidos"></div>
+            </section>
+
+            <!-- ============== FINALIZADOS ============== -->
+            <section id="section-finalizados" class="section" style="display:none;">
+                <h2>🏁 Finalizados</h2>
+                <div class="filtros">
+                    <input type="text" id="filtro-cliente-finalizados" placeholder="🔍 Cliente o DNI">
+                    <select id="filtro-envio-finalizados">
+                        <option value="">Todos los envíos</option>
+                        <option value="VIA CARGO">VIA CARGO</option>
+                        <option value="ANDREANI">ANDREANI</option>
+                        <option value="COMISIONISTA">COMISIONISTA</option>
+                        <option value="BUSPACK">BUSPACK</option>
+                        <option value="OTRO">OTRO</option>
+                    </select>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="filtro-pago-retiro">
+                        💰 Solo con pago pendiente
+                    </label>
+                </div>
+                <div id="lista-finalizados" class="lista-pedidos"></div>
+            </section>
+
+            <!-- ============== CLIENTES ============== -->
+            <section id="section-clientes" class="section" style="display:none;">
+                <h2>👥 Clientes</h2>
+                <div class="filtros">
+                    <input type="text" id="filtro-clientes" placeholder="🔍 Buscar por nombre o DNI">
+                </div>
+                <div id="lista-clientes"></div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Toast notifications -->
+    <div id="toast" class="toast" style="display:none;"></div>
+
+    <!-- Supabase JS SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- App scripts -->
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/app.js"></script>
+    <script src="js/pedidos.js"></script>
+</body>
+</html>
