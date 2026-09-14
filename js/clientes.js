@@ -82,6 +82,14 @@ function abrirModalCliente(cliente) {
                 </label>
                 <textarea id="c-notas" placeholder="Notas / observaciones" rows="3" style="margin-top:.5rem;">${c.notas || ''}</textarea>
             </div>
+
+            ${isNew ? '' : `
+                <div class="historial-cliente">
+                    <h4>📚 Historial de pedidos</h4>
+                    <div id="historial-lista"><p class="loading">Cargando...</p></div>
+                </div>
+            `}
+
             <div class="modal-acciones">
                 ${isNew ? '' : `<button class="btn btn-secondary" id="c-del" style="margin-right:auto;background:#fee;color:#c00;">🗑 Eliminar</button>`}
                 <button class="btn btn-secondary" id="c-cancel">Cancelar</button>
@@ -90,6 +98,10 @@ function abrirModalCliente(cliente) {
         </div>
     `;
     document.body.appendChild(modal);
+
+    // Cargar historial si es edición
+    if (!isNew) cargarHistorialCliente(c.id);
+
     modal.querySelector('#c-cancel').addEventListener('click', () => modal.remove());
 
     const delBtn = modal.querySelector('#c-del');
@@ -137,3 +149,64 @@ document.addEventListener('DOMContentLoaded', () => {
     const f = document.getElementById('filtro-clientes');
     if (f) f.addEventListener('input', cargarClientes);
 });
+
+// ============================================
+// HISTORIAL DE PEDIDOS POR CLIENTE
+// ============================================
+async function cargarHistorialCliente(clienteId) {
+    const cont = document.getElementById('historial-lista');
+    if (!cont) return;
+    const { data, error } = await supabaseClient
+        .from('pedidos_completos')
+        .select('*')
+        .eq('cliente_id', clienteId)
+        .order('created_at', { ascending: false });
+
+    if (error) { cont.innerHTML = `<p class="error">${error.message}</p>`; return; }
+    if (!data || !data.length) { cont.innerHTML = '<p class="empty" style="padding:1rem;">Sin pedidos previos.</p>'; return; }
+
+    cont.innerHTML = data.map(p => {
+        const estadoLabel = {
+            nuevo: '📋 Nuevo',
+            preparado: '📦 Preparado',
+            despachado: '🚚 Despachado',
+            finalizado: '🏁 Finalizado'
+        }[p.estado] || p.estado;
+        const badgeClass = {
+            nuevo: 'badge',
+            preparado: 'badge badge-star',
+            despachado: 'badge',
+            finalizado: 'badge badge-success'
+        }[p.estado] || 'badge';
+
+        return `
+            <div class="hist-pedido" onclick="this.classList.toggle('expanded')">
+                <div class="hist-pedido-header">
+                    <div>
+                        <span class="pedido-id">#${p.id}</span>
+                        <span class="${badgeClass}">${estadoLabel}</span>
+                        ${p.es_urgente ? '<span class="badge badge-urgent">🔥</span>' : ''}
+                        ${p.pago_retiro_pendiente ? '<span class="badge badge-warning">💰 Pendiente</span>' : ''}
+                    </div>
+                    <div class="hist-fecha">${formatDate(p.created_at)}</div>
+                </div>
+                <div class="hist-pedido-body">
+                    <div><b>Envío:</b> ${p.metodo_envio || '-'}${p.metodo_envio_detalle ? ' (' + p.metodo_envio_detalle + ')' : ''} | <b>Pago:</b> ${p.metodo_pago === 'anticipado' ? 'Anticipado' : 'Al recibir'}</div>
+                    ${p.nota ? `<div><b>Nota:</b> ${p.nota}</div>` : ''}
+                    <div class="hist-archivos">
+                        ${p.factura_url ? `<button class="btn btn-link" onclick="event.stopPropagation(); verArchivo('facturas', '${p.factura_url}')">📄 Factura</button>` : ''}
+                        ${p.comprobante_pago_url ? `<button class="btn btn-link" onclick="event.stopPropagation(); verArchivo('comprobantes', '${p.comprobante_pago_url}')">💵 Comprobante</button>` : ''}
+                        ${p.foto_pedido_url ? `<button class="btn btn-link" onclick="event.stopPropagation(); verArchivo('fotos_pedido', '${p.foto_pedido_url}')">📸 Foto pedido</button>` : ''}
+                        ${p.guia_url ? `<button class="btn btn-link" onclick="event.stopPropagation(); verArchivo('guias', '${p.guia_url}')">📄 Guía</button>` : ''}
+                    </div>
+                    <div class="hist-tracking">
+                        ${p.created_by_email ? `<div>Creado por <b>${p.created_by_email}</b> · ${formatDate(p.created_at)}</div>` : ''}
+                        ${p.preparado_by_email ? `<div>Preparado por <b>${p.preparado_by_email}</b> · ${formatDate(p.preparado_at)}</div>` : ''}
+                        ${p.despachado_by_email ? `<div>Despachado por <b>${p.despachado_by_email}</b> · ${formatDate(p.despachado_at)}</div>` : ''}
+                        ${p.finalizado_by_email ? `<div>Finalizado por <b>${p.finalizado_by_email}</b> · ${formatDate(p.finalizado_at)}</div>` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
