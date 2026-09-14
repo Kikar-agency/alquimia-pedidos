@@ -1,106 +1,97 @@
 // ============================================
-// APP - Navegación y lógica principal
+// APP - Navegación y helpers
 // ============================================
+let currentSection = 'nuevos';
 
-let currentSection = 'pendientes';
-
-// ---------- NAVEGACIÓN ENTRE SECCIONES ----------
 function showSection(section) {
     currentSection = section;
-
-    // Actualizar nav activo
-    document.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.classList.remove('active');
-    });
+    document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
     document.querySelector(`.nav-btn[data-section="${section}"]`)?.classList.add('active');
-
-    // Ocultar todas las secciones
-    document.querySelectorAll('.section').forEach(s => {
-        s.style.display = 'none';
-    });
-
-    // Mostrar la sección seleccionada
+    document.querySelectorAll('.section').forEach(s => s.style.display = 'none');
     const sectionEl = document.getElementById(`section-${section}`);
     if (sectionEl) sectionEl.style.display = 'block';
 
-    // Cargar datos según sección
     switch (section) {
         case 'nuevo': initNuevoPedido(); break;
-        case 'pendientes': cargarPedidos('pendiente_aprobacion'); break;
-        case 'aprobados': cargarPedidos('aprobado'); break;
+        case 'nuevos': cargarPedidos('nuevo'); break;
+        case 'preparados': cargarPedidos('preparado'); break;
         case 'despachados': cargarPedidos('despachado'); break;
         case 'finalizados': cargarPedidos('finalizado'); break;
         case 'clientes': cargarClientes(); break;
+        case 'transportes': cargarTransportes(); break;
     }
 }
 
-// ---------- EVENT LISTENERS DE NAV ----------
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const section = btn.getAttribute('data-section');
-            showSection(section);
-        });
+        btn.addEventListener('click', () => showSection(btn.getAttribute('data-section')));
     });
 });
 
 // ---------- HELPERS ----------
-function formatDate(dateStr) {
-    if (!dateStr) return '-';
-    const d = new Date(dateStr);
-    return d.toLocaleString('es-AR', {
+function formatDate(d) {
+    if (!d) return '-';
+    return new Date(d).toLocaleString('es-AR', {
         day: '2-digit', month: '2-digit', year: 'numeric',
         hour: '2-digit', minute: '2-digit'
     });
 }
 
-function formatDateShort(dateStr) {
-    if (!dateStr) return '-';
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('es-AR');
+function diasDesde(d) {
+    if (!d) return 0;
+    return Math.floor((Date.now() - new Date(d).getTime()) / 86400000);
 }
 
-function diasDesde(dateStr) {
-    if (!dateStr) return 0;
-    const d = new Date(dateStr);
-    const diff = Date.now() - d.getTime();
-    return Math.floor(diff / (1000 * 60 * 60 * 24));
+// Horas hábiles desde una fecha (lun-vie, sin feriados)
+function horasHabilesDesde(fechaStr) {
+    if (!fechaStr) return 0;
+    const start = new Date(fechaStr);
+    const end = new Date();
+    if (end <= start) return 0;
+
+    let horas = 0;
+    const cursor = new Date(start);
+    while (cursor < end) {
+        const dow = cursor.getDay(); // 0=dom, 6=sáb
+        if (dow !== 0 && dow !== 6) horas++;
+        cursor.setTime(cursor.getTime() + 3600000); // +1h
+    }
+    return horas;
 }
 
-function toast(message, type = 'success') {
+function toast(msg, type = 'success') {
     const t = document.getElementById('toast');
-    t.textContent = message;
+    t.textContent = msg;
     t.className = `toast toast-${type}`;
     t.style.display = 'block';
-    setTimeout(() => { t.style.display = 'none'; }, 3500);
+    setTimeout(() => t.style.display = 'none', 3500);
 }
 
-// ---------- BUSCAR CLIENTE POR DNI ----------
+function sanitizeFilename(name) {
+    return name
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, '_')
+        .replace(/[^a-zA-Z0-9._-]/g, '')
+        .toLowerCase();
+}
+
 async function buscarClientePorDNI(dni) {
-    const { data, error } = await supabaseClient
-        .from('clientes')
-        .select('*')
-        .eq('dni', dni)
-        .maybeSingle();
-
-    if (error) {
-        console.error(error);
-        return null;
-    }
+    const { data } = await supabaseClient.from('clientes').select('*').eq('dni', dni).maybeSingle();
     return data;
 }
 
-// ---------- CREAR CLIENTE ----------
 async function crearCliente(clienteData) {
-    const { data, error } = await supabaseClient
-        .from('clientes')
-        .insert([clienteData])
-        .select()
-        .single();
-
-    if (error) {
-        toast('Error al crear cliente: ' + error.message, 'error');
-        return null;
-    }
+    const { data, error } = await supabaseClient.from('clientes').insert([clienteData]).select().single();
+    if (error) { toast('Error al crear cliente: ' + error.message, 'error'); return null; }
     return data;
+}
+
+async function verArchivo(bucket, filename) {
+    if (!filename) { toast('No hay archivo', 'error'); return; }
+    const nuevaPestana = window.open('', '_blank');
+    if (!nuevaPestana) { toast('Habilitá popups para este sitio', 'error'); return; }
+    nuevaPestana.document.write('<p style="font-family:sans-serif;padding:2rem;">Cargando...</p>');
+    const { data, error } = await supabaseClient.storage.from(bucket).createSignedUrl(filename, 3600);
+    if (error) { nuevaPestana.close(); toast('Error: ' + error.message, 'error'); return; }
+    nuevaPestana.location.href = data.signedUrl;
 }

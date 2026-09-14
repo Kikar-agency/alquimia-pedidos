@@ -1,22 +1,7 @@
 // ============================================
 // PEDIDOS - CRUD y lógica de negocio
 // ============================================
-
-// Estado actual para nuevo pedido
 let clienteSeleccionado = null;
-
-// ============================================
-// HELPER: Sanitizar nombre de archivo
-// ============================================
-// Supabase Storage rechaza espacios, acentos, paréntesis, etc.
-// Esto deja solo letras, números, puntos, guiones y guiones bajos.
-function sanitizeFilename(name) {
-    return name
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // sacar acentos
-        .replace(/\s+/g, '_')                              // espacios → guion bajo
-        .replace(/[^a-zA-Z0-9._-]/g, '')                   // sacar todo lo raro
-        .toLowerCase();
-}
 
 // ============================================
 // NUEVO PEDIDO
@@ -26,53 +11,65 @@ function initNuevoPedido() {
     document.getElementById('form-nuevo-pedido').reset();
     document.getElementById('cliente-encontrado').style.display = 'none';
     document.getElementById('cliente-nuevo').style.display = 'none';
+    document.getElementById('card-comprobante-inicial').style.display = 'none';
     document.getElementById('btn-crear-pedido').style.display = 'none';
+    document.getElementById('input-sin-comprobante-nota').style.display = 'none';
 }
 
-// Búsqueda de cliente por DNI
 document.addEventListener('DOMContentLoaded', () => {
-    const btnBuscarCliente = document.getElementById('btn-buscar-cliente');
-    if (btnBuscarCliente) {
-        btnBuscarCliente.addEventListener('click', async () => {
+    const btnBuscar = document.getElementById('btn-buscar-cliente');
+    if (btnBuscar) {
+        btnBuscar.addEventListener('click', async () => {
             const dni = document.getElementById('input-dni').value.trim();
-            if (!dni) {
-                toast('Ingresá un DNI', 'error');
-                return;
-            }
+            if (!dni) { toast('Ingresá un DNI', 'error'); return; }
             const cliente = await buscarClientePorDNI(dni);
             if (cliente) {
-                // Cliente encontrado
                 clienteSeleccionado = cliente;
                 document.getElementById('cliente-nuevo').style.display = 'none';
-                const info = document.getElementById('cliente-encontrado');
-                info.innerHTML = `
+                const frec = cliente.es_frecuente ? '⭐ ' : '';
+                const notas = cliente.notas ? `<div class="pedido-nota" style="margin-top:.5rem;"><b>Notas:</b> ${cliente.notas}</div>` : '';
+                document.getElementById('cliente-encontrado').innerHTML = `
                     <div class="cliente-card">
-                        <strong>${cliente.nombre_completo}</strong> (DNI: ${cliente.dni})<br>
+                        ${frec}<strong>${cliente.nombre_completo}</strong> (DNI: ${cliente.dni})<br>
                         ${cliente.direccion || ''} - ${cliente.ciudad || ''}, ${cliente.provincia || ''} (CP: ${cliente.cp || '-'})<br>
                         Envío preferido: <strong>${cliente.envio_preferido || '-'}</strong>
+                        ${notas}
                     </div>
                 `;
-                info.style.display = 'block';
-                document.getElementById('btn-crear-pedido').style.display = 'inline-block';
+                document.getElementById('cliente-encontrado').style.display = 'block';
             } else {
-                // Cliente nuevo - mostrar formulario
                 clienteSeleccionado = null;
                 document.getElementById('cliente-encontrado').style.display = 'none';
                 document.getElementById('cliente-nuevo').style.display = 'block';
                 document.getElementById('nuevo-dni').value = dni;
-                document.getElementById('btn-crear-pedido').style.display = 'inline-block';
             }
+            document.getElementById('btn-crear-pedido').style.display = 'inline-block';
         });
     }
 
-    // Crear pedido
-    const formNuevoPedido = document.getElementById('form-nuevo-pedido');
-    if (formNuevoPedido) {
-        formNuevoPedido.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            await crearPedido();
+    // Cambio método de pago → mostrar/ocultar bloque de comprobante
+    const metodoPagoSelect = document.getElementById('input-metodo-pago');
+    if (metodoPagoSelect) {
+        metodoPagoSelect.addEventListener('change', () => {
+            const card = document.getElementById('card-comprobante-inicial');
+            card.style.display = metodoPagoSelect.value === 'anticipado' ? 'block' : 'none';
         });
     }
+
+    // Sin comprobante toggle
+    const sinComprobChk = document.getElementById('input-sin-comprobante');
+    if (sinComprobChk) {
+        sinComprobChk.addEventListener('change', () => {
+            const nota = document.getElementById('input-sin-comprobante-nota');
+            const file = document.getElementById('input-comprobante');
+            nota.style.display = sinComprobChk.checked ? 'block' : 'none';
+            file.disabled = sinComprobChk.checked;
+            if (sinComprobChk.checked) file.value = '';
+        });
+    }
+
+    const form = document.getElementById('form-nuevo-pedido');
+    if (form) form.addEventListener('submit', async (e) => { e.preventDefault(); await crearPedido(); });
 });
 
 async function crearPedido() {
@@ -81,9 +78,9 @@ async function crearPedido() {
     btn.textContent = 'Creando...';
 
     try {
-        // 1. Si es cliente nuevo, crearlo primero
+        // Cliente nuevo si aplica
         if (!clienteSeleccionado) {
-            const nuevoCliente = {
+            const nc = {
                 dni: document.getElementById('nuevo-dni').value.trim(),
                 nombre_completo: document.getElementById('nuevo-nombre').value.trim(),
                 provincia: document.getElementById('nuevo-provincia').value.trim(),
@@ -94,143 +91,120 @@ async function crearPedido() {
                 telefono: document.getElementById('nuevo-telefono').value.trim(),
                 email: document.getElementById('nuevo-email').value.trim()
             };
-            if (!nuevoCliente.dni || !nuevoCliente.nombre_completo) {
+            if (!nc.dni || !nc.nombre_completo) {
                 toast('DNI y nombre son obligatorios', 'error');
-                btn.disabled = false;
-                btn.textContent = 'Crear pedido';
-                return;
+                return btnReset(btn);
             }
-            clienteSeleccionado = await crearCliente(nuevoCliente);
-            if (!clienteSeleccionado) {
-                btn.disabled = false;
-                btn.textContent = 'Crear pedido';
-                return;
-            }
+            clienteSeleccionado = await crearCliente(nc);
+            if (!clienteSeleccionado) return btnReset(btn);
         }
 
-        // 2. Subir archivo de factura
-        const fileInput = document.getElementById('input-factura');
-        const file = fileInput.files[0];
-        if (!file) {
-            toast('Subí el archivo de la factura', 'error');
-            btn.disabled = false;
-            btn.textContent = 'Crear pedido';
-            return;
-        }
+        // Factura
+        const fileFactura = document.getElementById('input-factura').files[0];
+        if (!fileFactura) { toast('Subí el archivo de la factura', 'error'); return btnReset(btn); }
 
-        const filename = `${Date.now()}_${sanitizeFilename(file.name)}`;
-        const { error: uploadError } = await supabaseClient.storage
-            .from('facturas')
-            .upload(filename, file);
-
-        if (uploadError) {
-            toast('Error al subir factura: ' + uploadError.message, 'error');
-            btn.disabled = false;
-            btn.textContent = 'Crear pedido';
-            return;
-        }
-
-        // 3. Crear el pedido
         const metodoPago = document.getElementById('input-metodo-pago').value;
-        const metodoEnvio = document.getElementById('input-metodo-envio').value 
-                          || clienteSeleccionado.envio_preferido;
+
+        // Validación comprobante si es anticipado
+        let comprobanteFile = null;
+        let sinComprobante = false;
+        let sinComprobNota = '';
+        if (metodoPago === 'anticipado') {
+            comprobanteFile = document.getElementById('input-comprobante').files[0];
+            sinComprobante = document.getElementById('input-sin-comprobante').checked;
+            sinComprobNota = document.getElementById('input-sin-comprobante-nota').value.trim();
+            if (!comprobanteFile && !sinComprobante) {
+                toast('Subí el comprobante o tildá "No tengo comprobante"', 'error');
+                return btnReset(btn);
+            }
+            if (sinComprobante && !sinComprobNota) {
+                toast('Si no hay comprobante, explicá por qué', 'error');
+                return btnReset(btn);
+            }
+        }
+
+        // Upload factura
+        const factName = `${Date.now()}_${sanitizeFilename(fileFactura.name)}`;
+        const { error: e1 } = await supabaseClient.storage.from('facturas').upload(factName, fileFactura);
+        if (e1) { toast('Error subiendo factura: ' + e1.message, 'error'); return btnReset(btn); }
+
+        // Upload comprobante si aplica
+        let compName = null;
+        if (comprobanteFile) {
+            compName = `comp_${Date.now()}_${sanitizeFilename(comprobanteFile.name)}`;
+            const { error: e2 } = await supabaseClient.storage.from('comprobantes').upload(compName, comprobanteFile);
+            if (e2) { toast('Error subiendo comprobante: ' + e2.message, 'error'); return btnReset(btn); }
+        }
 
         const pedido = {
             cliente_id: clienteSeleccionado.id,
-            factura_url: filename,
-            factura_filename: file.name,
-            metodo_envio: metodoEnvio,
+            factura_url: factName,
+            factura_filename: fileFactura.name,
+            metodo_envio: document.getElementById('input-metodo-envio').value || clienteSeleccionado.envio_preferido,
+            metodo_envio_detalle: document.getElementById('input-metodo-envio-detalle').value.trim() || null,
             metodo_pago: metodoPago,
             nota: document.getElementById('input-nota').value.trim(),
             es_urgente: document.getElementById('input-urgente').checked,
-            estado: 'pendiente_aprobacion',
-            created_by: currentUser.id
+            estado: 'nuevo',
+            created_by: currentUser.id,
+            comprobante_pago_url: compName,
+            comprobante_pago_filename: comprobanteFile ? comprobanteFile.name : null,
+            sin_comprobante: sinComprobante,
+            sin_comprobante_nota: sinComprobante ? sinComprobNota : null
         };
 
-        const { data, error } = await supabaseClient
-            .from('pedidos')
-            .insert([pedido])
-            .select()
-            .single();
-
-        if (error) {
-            toast('Error al crear pedido: ' + error.message, 'error');
-            btn.disabled = false;
-            btn.textContent = 'Crear pedido';
-            return;
-        }
+        const { data, error } = await supabaseClient.from('pedidos').insert([pedido]).select().single();
+        if (error) { toast('Error: ' + error.message, 'error'); return btnReset(btn); }
 
         toast(`✅ Pedido #${data.id} creado`);
-        showSection('pendientes');
+        showSection('nuevos');
     } catch (err) {
         console.error(err);
         toast('Error inesperado', 'error');
-        btn.disabled = false;
-        btn.textContent = 'Crear pedido';
+        btnReset(btn);
     }
+}
+
+function btnReset(btn) {
+    btn.disabled = false;
+    btn.textContent = 'Crear pedido';
 }
 
 // ============================================
 // LISTAR PEDIDOS
 // ============================================
 async function cargarPedidos(estado) {
-    const lista = document.getElementById(`lista-${estado === 'pendiente_aprobacion' ? 'pendientes' : estado + 's'}`);
+    const seccion = estado === 'nuevo' ? 'nuevos' : estado + 's';
+    const lista = document.getElementById(`lista-${seccion}`);
     if (!lista) return;
-
     lista.innerHTML = '<p class="loading">Cargando...</p>';
 
-    // Query con ordenamiento: urgentes primero, después más viejos arriba
-    let query = supabaseClient
-        .from('pedidos_completos')
-        .select('*')
-        .eq('estado', estado);
+    let query = supabaseClient.from('pedidos_completos').select('*').eq('estado', estado);
 
-    if (estado === 'aprobado') {
-        // Urgentes primero, después por antigüedad
-        query = query.order('es_urgente', { ascending: false })
-                     .order('created_at', { ascending: true });
+    if (estado === 'nuevo' || estado === 'preparado') {
+        query = query.order('es_urgente', { ascending: false }).order('created_at', { ascending: true });
     } else {
         query = query.order('created_at', { ascending: false });
     }
 
     const { data, error } = await query;
+    if (error) { lista.innerHTML = `<p class="error">Error: ${error.message}</p>`; return; }
+    if (!data || !data.length) { lista.innerHTML = '<p class="empty">No hay pedidos en esta sección.</p>'; return; }
 
-    if (error) {
-        lista.innerHTML = `<p class="error">Error: ${error.message}</p>`;
-        return;
-    }
+    // Filtros
+    const f = obtenerFiltros(seccion);
+    let filtrados = data;
+    if (f.cliente) filtrados = filtrados.filter(p =>
+        (p.cliente_nombre || '').toLowerCase().includes(f.cliente.toLowerCase()) ||
+        (p.cliente_dni || '').includes(f.cliente));
+    if (f.envio) filtrados = filtrados.filter(p => p.metodo_envio === f.envio);
+    if (f.pagoRetiro && estado === 'finalizado') filtrados = filtrados.filter(p => p.pago_retiro_pendiente);
 
-    if (!data || data.length === 0) {
-        lista.innerHTML = '<p class="empty">No hay pedidos en esta sección.</p>';
-        return;
-    }
-
-    // Aplicar filtros (si existen)
-    const filtros = obtenerFiltros(estado);
-    let pedidosFiltrados = data;
-    if (filtros.cliente) {
-        pedidosFiltrados = pedidosFiltrados.filter(p =>
-            (p.cliente_nombre || '').toLowerCase().includes(filtros.cliente.toLowerCase()) ||
-            (p.cliente_dni || '').includes(filtros.cliente)
-        );
-    }
-    if (filtros.envio) {
-        pedidosFiltrados = pedidosFiltrados.filter(p => p.metodo_envio === filtros.envio);
-    }
-    if (filtros.pagoRetiro && estado === 'finalizado') {
-        pedidosFiltrados = pedidosFiltrados.filter(p => p.pago_retiro_pendiente);
-    }
-
-    if (pedidosFiltrados.length === 0) {
-        lista.innerHTML = '<p class="empty">No hay pedidos que coincidan con los filtros.</p>';
-        return;
-    }
-
-    lista.innerHTML = pedidosFiltrados.map(p => renderPedidoCard(p, estado)).join('');
+    if (!filtrados.length) { lista.innerHTML = '<p class="empty">Sin coincidencias.</p>'; return; }
+    lista.innerHTML = filtrados.map(p => renderPedidoCard(p, estado)).join('');
 }
 
-function obtenerFiltros(estado) {
-    const seccion = estado === 'pendiente_aprobacion' ? 'pendientes' : estado + 's';
+function obtenerFiltros(seccion) {
     return {
         cliente: document.getElementById(`filtro-cliente-${seccion}`)?.value.trim() || '',
         envio: document.getElementById(`filtro-envio-${seccion}`)?.value || '',
@@ -240,66 +214,70 @@ function obtenerFiltros(estado) {
 
 function renderPedidoCard(p, estado) {
     const dias = diasDesde(p.created_at);
-    const urgenteBadge = p.es_urgente ? '<span class="badge badge-urgent">🔥 URGENTE</span>' : '';
-    const pagoRetiroBadge = p.pago_retiro_pendiente
-        ? '<span class="badge badge-warning">💰 Pago pendiente</span>' : '';
-    const antiguedadBadge = dias > 3
-        ? `<span class="badge badge-old">${dias} días</span>`
-        : `<span class="badge">${dias}d</span>`;
+    const urgente = p.es_urgente ? '<span class="badge badge-urgent">🔥 URGENTE</span>' : '';
+    const pagoRet = p.pago_retiro_pendiente ? '<span class="badge badge-warning">💰 Pago pendiente</span>' : '';
+    const frec = p.cliente_es_frecuente ? '<span class="badge badge-star">⭐ Frecuente</span>' : '';
+
+    // Alerta 48hs hábiles (solo en nuevo/preparado)
+    let alerta48 = '';
+    if (estado === 'nuevo' || estado === 'preparado') {
+        const horasH = horasHabilesDesde(p.created_at);
+        if (horasH > 48) {
+            alerta48 = `<span class="badge badge-old">⚠️ +48hs hábiles</span>`;
+        }
+    }
+    const antiguedad = `<span class="badge">${dias}d</span>`;
 
     let acciones = '';
-    if (estado === 'pendiente_aprobacion') {
-        const labelAprobar = p.metodo_pago === 'anticipado'
-            ? '✅ Aprobar (subir comprobante)'
-            : '✅ Aprobar';
-        acciones = `
-            <button class="btn btn-primary" onclick="aprobarPedido(${p.id}, '${p.metodo_pago}')">${labelAprobar}</button>
-            <button class="btn btn-secondary" onclick="toggleUrgente(${p.id}, ${!p.es_urgente})">
-                ${p.es_urgente ? '⬇ Quitar urgencia' : '🔥 Marcar urgente'}
-            </button>
-        `;
-    } else if (estado === 'aprobado') {
+    if (estado === 'nuevo') {
         acciones = `
             <label class="btn btn-primary file-btn">
-                📦 Despachar (subir guía)
+                📦 Marcar preparado (foto opcional)
+                <input type="file" accept="image/*" hidden onchange="marcarPreparado(${p.id}, this)">
+            </label>
+            <button class="btn btn-secondary" onclick="marcarPreparadoSinFoto(${p.id})">Marcar sin foto</button>
+            <button class="btn btn-secondary" onclick="toggleUrgente(${p.id}, ${!p.es_urgente}, 'nuevo')">
+                ${p.es_urgente ? '⬇ Quitar urgencia' : '🔥 Urgente'}
+            </button>
+        `;
+    } else if (estado === 'preparado') {
+        acciones = `
+            <label class="btn btn-primary file-btn">
+                🚚 Despachar (subir guía)
                 <input type="file" accept="image/*,.pdf" hidden onchange="despacharPedido(${p.id}, this)">
             </label>
-            <button class="btn btn-secondary" onclick="toggleUrgente(${p.id}, ${!p.es_urgente})">
-                ${p.es_urgente ? '⬇ Quitar urgencia' : '🔥 Marcar urgente'}
+            <button class="btn btn-secondary" onclick="toggleUrgente(${p.id}, ${!p.es_urgente}, 'preparado')">
+                ${p.es_urgente ? '⬇ Quitar urgencia' : '🔥 Urgente'}
             </button>
         `;
     } else if (estado === 'despachado') {
         acciones = `
-            <button class="btn btn-primary" onclick="finalizarPedido(${p.id})">✅ Marcar finalizado</button>
+            <button class="btn btn-primary" onclick="finalizarPedido(${p.id})">✅ Finalizado</button>
             <button class="btn btn-secondary" onclick="verArchivo('guias', '${p.guia_url}')">📄 Ver guía</button>
         `;
     } else if (estado === 'finalizado') {
-        if (p.pago_retiro_pendiente) {
-            acciones = `<button class="btn btn-primary" onclick="confirmarPago(${p.id})">💰 Confirmar pago (subir comprobante)</button>`;
-        }
-        if (p.guia_url) {
-            acciones += `<button class="btn btn-secondary" onclick="verArchivo('guias', '${p.guia_url}')">📄 Ver guía</button>`;
-        }
+        if (p.pago_retiro_pendiente) acciones = `<button class="btn btn-primary" onclick="confirmarPago(${p.id})">💰 Confirmar pago</button>`;
+        if (p.guia_url) acciones += `<button class="btn btn-secondary" onclick="verArchivo('guias', '${p.guia_url}')">📄 Ver guía</button>`;
     }
 
-    // Botón ver comprobante (en todos los estados si ya existe)
-    if (p.comprobante_pago_url) {
-        acciones += `<button class="btn btn-secondary" onclick="verArchivo('comprobantes', '${p.comprobante_pago_url}')">💵 Ver comprobante</button>`;
-    }
+    // Archivos disponibles
+    if (p.foto_pedido_url) acciones += `<button class="btn btn-secondary" onclick="verArchivo('fotos_pedido', '${p.foto_pedido_url}')">📸 Ver pedido armado</button>`;
+    if (p.comprobante_pago_url) acciones += `<button class="btn btn-secondary" onclick="verArchivo('comprobantes', '${p.comprobante_pago_url}')">💵 Comprobante</button>`;
 
-    // Badge "sin comprobante" si aplica
     let badgeSinComprob = '';
     if (p.sin_comprobante) {
-        const tooltip = (p.sin_comprobante_nota || '').replace(/"/g, '&quot;');
-        badgeSinComprob = `<span class="badge badge-warning" title="${tooltip}">⚠️ Sin comprobante</span>`;
+        const tt = (p.sin_comprobante_nota || '').replace(/"/g, '&quot;');
+        badgeSinComprob = `<span class="badge badge-warning" title="${tt}">⚠️ Sin comprobante</span>`;
     }
 
-    // Historial de acciones
-    let historial = '';
-    if (p.created_by_email) historial += `<div class="hist-item">Creado por <b>${p.created_by_email}</b> · ${formatDate(p.created_at)}</div>`;
-    if (p.aprobado_by_email) historial += `<div class="hist-item">Aprobado por <b>${p.aprobado_by_email}</b> · ${formatDate(p.aprobado_at)}</div>`;
-    if (p.despachado_by_email) historial += `<div class="hist-item">Despachado por <b>${p.despachado_by_email}</b> · ${formatDate(p.despachado_at)}</div>`;
-    if (p.finalizado_by_email) historial += `<div class="hist-item">Finalizado por <b>${p.finalizado_by_email}</b> · ${formatDate(p.finalizado_at)}</div>`;
+    let hist = '';
+    if (p.created_by_email) hist += `<div class="hist-item">Creado por <b>${p.created_by_email}</b> · ${formatDate(p.created_at)}</div>`;
+    if (p.preparado_by_email) hist += `<div class="hist-item">Preparado por <b>${p.preparado_by_email}</b> · ${formatDate(p.preparado_at)}</div>`;
+    if (p.despachado_by_email) hist += `<div class="hist-item">Despachado por <b>${p.despachado_by_email}</b> · ${formatDate(p.despachado_at)}</div>`;
+    if (p.finalizado_by_email) hist += `<div class="hist-item">Finalizado por <b>${p.finalizado_by_email}</b> · ${formatDate(p.finalizado_at)}</div>`;
+
+    const envio = p.metodo_envio || '-';
+    const envioDet = p.metodo_envio_detalle ? ` (${p.metodo_envio_detalle})` : '';
 
     return `
         <div class="pedido-card ${p.es_urgente ? 'urgente' : ''}">
@@ -309,15 +287,10 @@ function renderPedidoCard(p, estado) {
                     <strong>${p.cliente_nombre || 'Sin cliente'}</strong>
                     <span class="pedido-dni">DNI: ${p.cliente_dni || '-'}</span>
                 </div>
-                <div>
-                    ${urgenteBadge}
-                    ${pagoRetiroBadge}
-                    ${badgeSinComprob}
-                    ${antiguedadBadge}
-                </div>
+                <div>${urgente}${frec}${pagoRet}${badgeSinComprob}${alerta48}${antiguedad}</div>
             </div>
             <div class="pedido-info">
-                <div><b>Envío:</b> ${p.metodo_envio || '-'} | <b>Pago:</b> ${p.metodo_pago === 'anticipado' ? 'Anticipado' : 'Al recibir'}</div>
+                <div><b>Envío:</b> ${envio}${envioDet} | <b>Pago:</b> ${p.metodo_pago === 'anticipado' ? 'Anticipado' : 'Al recibir'}</div>
                 <div><b>Dirección:</b> ${p.cliente_direccion || '-'}, ${p.cliente_ciudad || '-'}, ${p.cliente_provincia || '-'} (CP: ${p.cliente_cp || '-'})</div>
                 ${p.cliente_telefono ? `<div><b>Tel:</b> ${p.cliente_telefono}</div>` : ''}
                 ${p.nota ? `<div class="pedido-nota"><b>Nota:</b> ${p.nota}</div>` : ''}
@@ -325,168 +298,109 @@ function renderPedidoCard(p, estado) {
             <div class="pedido-archivo">
                 <button class="btn btn-link" onclick="verArchivo('facturas', '${p.factura_url}')">📄 Ver factura: ${p.factura_filename || 'archivo'}</button>
             </div>
-            <div class="pedido-historial">${historial}</div>
+            <div class="pedido-historial">${hist}</div>
             <div class="pedido-acciones">${acciones}</div>
         </div>
     `;
 }
 
 // ============================================
-// ACCIONES SOBRE PEDIDOS
+// ACCIONES
 // ============================================
-async function aprobarPedido(id, metodoPago) {
-    // Si es al_recibir, aprobamos directo (sin pedir comprobante)
-    if (metodoPago === 'al_recibir') {
-        if (!confirm('¿Aprobar pedido #' + id + '?')) return;
-        const { error } = await supabaseClient
-            .from('pedidos')
-            .update({
-                estado: 'aprobado',
-                aprobado_by: currentUser.id,
-                aprobado_at: new Date().toISOString()
-            })
-            .eq('id', id);
-        if (error) {
-            toast('Error: ' + error.message, 'error');
-            return;
-        }
-        toast(`✅ Pedido #${id} aprobado`);
-        cargarPedidos('pendiente_aprobacion');
-        return;
-    }
+async function marcarPreparado(id, fileInput) {
+    const file = fileInput.files[0];
+    if (!file) return;
+    const fname = `foto_${id}_${Date.now()}_${sanitizeFilename(file.name)}`;
+    const { error: e1 } = await supabaseClient.storage.from('fotos_pedido').upload(fname, file);
+    if (e1) { toast('Error subiendo foto: ' + e1.message, 'error'); return; }
 
-    // Si es anticipado, abrir modal para subir comprobante
-    abrirModalComprobante({
-        pedidoId: id,
-        titulo: `Aprobar pedido #${id}`,
-        subtitulo: 'Subí el comprobante de pago para aprobar.',
-        onConfirmar: async ({ comprobanteFilename, sinComprobante, sinComprobanteNota }) => {
-            const updateData = {
-                estado: 'aprobado',
-                aprobado_by: currentUser.id,
-                aprobado_at: new Date().toISOString(),
-                sin_comprobante: sinComprobante,
-                sin_comprobante_nota: sinComprobante ? sinComprobanteNota : null
-            };
-            if (comprobanteFilename) {
-                updateData.comprobante_pago_url = comprobanteFilename.url;
-                updateData.comprobante_pago_filename = comprobanteFilename.original;
-            }
-            const { error } = await supabaseClient
-                .from('pedidos')
-                .update(updateData)
-                .eq('id', id);
-            if (error) {
-                toast('Error: ' + error.message, 'error');
-                return false;
-            }
-            toast(`✅ Pedido #${id} aprobado`);
-            cargarPedidos('pendiente_aprobacion');
-            return true;
-        }
-    });
+    const { error } = await supabaseClient.from('pedidos').update({
+        estado: 'preparado',
+        foto_pedido_url: fname,
+        foto_pedido_filename: file.name,
+        preparado_by: currentUser.id,
+        preparado_at: new Date().toISOString()
+    }).eq('id', id);
+    if (error) { toast('Error: ' + error.message, 'error'); return; }
+    toast(`📦 Pedido #${id} preparado`);
+    cargarPedidos('nuevo');
 }
 
-async function toggleUrgente(id, valor) {
-    const { error } = await supabaseClient
-        .from('pedidos')
-        .update({ es_urgente: valor })
-        .eq('id', id);
-    if (error) {
-        toast('Error: ' + error.message, 'error');
-        return;
-    }
+async function marcarPreparadoSinFoto(id) {
+    if (!confirm(`¿Marcar pedido #${id} como preparado sin foto?`)) return;
+    const { error } = await supabaseClient.from('pedidos').update({
+        estado: 'preparado',
+        preparado_by: currentUser.id,
+        preparado_at: new Date().toISOString()
+    }).eq('id', id);
+    if (error) { toast('Error: ' + error.message, 'error'); return; }
+    toast(`📦 Pedido #${id} preparado`);
+    cargarPedidos('nuevo');
+}
+
+async function toggleUrgente(id, valor, estado) {
+    const { error } = await supabaseClient.from('pedidos').update({ es_urgente: valor }).eq('id', id);
+    if (error) { toast('Error: ' + error.message, 'error'); return; }
     toast(valor ? '🔥 Marcado urgente' : 'Urgencia quitada');
-    cargarPedidos(currentSection === 'pendientes' ? 'pendiente_aprobacion' : currentSection.replace(/s$/, ''));
+    cargarPedidos(estado);
 }
 
 async function despacharPedido(id, fileInput) {
     const file = fileInput.files[0];
     if (!file) return;
+    const fname = `guia_${id}_${Date.now()}_${sanitizeFilename(file.name)}`;
+    const { error: e1 } = await supabaseClient.storage.from('guias').upload(fname, file);
+    if (e1) { toast('Error subiendo guía: ' + e1.message, 'error'); return; }
 
-    const filename = `guia_${id}_${Date.now()}_${sanitizeFilename(file.name)}`;
-    const { error: upErr } = await supabaseClient.storage
-        .from('guias')
-        .upload(filename, file);
-    if (upErr) {
-        toast('Error al subir guía: ' + upErr.message, 'error');
-        return;
-    }
-
-    const { error } = await supabaseClient
-        .from('pedidos')
-        .update({
-            estado: 'despachado',
-            guia_url: filename,
-            guia_filename: file.name,
-            despachado_by: currentUser.id,
-            despachado_at: new Date().toISOString()
-        })
-        .eq('id', id);
-
-    if (error) {
-        toast('Error: ' + error.message, 'error');
-        return;
-    }
-    toast(`📦 Pedido #${id} despachado`);
-    cargarPedidos('aprobado');
+    const { error } = await supabaseClient.from('pedidos').update({
+        estado: 'despachado',
+        guia_url: fname,
+        guia_filename: file.name,
+        despachado_by: currentUser.id,
+        despachado_at: new Date().toISOString()
+    }).eq('id', id);
+    if (error) { toast('Error: ' + error.message, 'error'); return; }
+    toast(`🚚 Pedido #${id} despachado`);
+    cargarPedidos('preparado');
 }
 
 async function finalizarPedido(id) {
-    // Si el pedido era "al_recibir" se marca pago_retiro_pendiente=true
-    const { data: pedido } = await supabaseClient
-        .from('pedidos')
-        .select('metodo_pago')
-        .eq('id', id)
-        .single();
-
-    const pagoRetiroPendiente = pedido && pedido.metodo_pago === 'al_recibir';
-    const confirmMsg = pagoRetiroPendiente
-        ? `Finalizar pedido #${id}? (Quedará marcado con pago pendiente porque era pago al recibir)`
+    const { data: p } = await supabaseClient.from('pedidos').select('metodo_pago').eq('id', id).single();
+    const pagoRet = p && p.metodo_pago === 'al_recibir';
+    const msg = pagoRet
+        ? `Finalizar pedido #${id}? Quedará con "pago pendiente" por ser al recibir.`
         : `¿Finalizar pedido #${id}?`;
-    if (!confirm(confirmMsg)) return;
+    if (!confirm(msg)) return;
 
-    const { error } = await supabaseClient
-        .from('pedidos')
-        .update({
-            estado: 'finalizado',
-            finalizado_by: currentUser.id,
-            finalizado_at: new Date().toISOString(),
-            pago_retiro_pendiente: pagoRetiroPendiente
-        })
-        .eq('id', id);
-
-    if (error) {
-        toast('Error: ' + error.message, 'error');
-        return;
-    }
+    const { error } = await supabaseClient.from('pedidos').update({
+        estado: 'finalizado',
+        finalizado_by: currentUser.id,
+        finalizado_at: new Date().toISOString(),
+        pago_retiro_pendiente: pagoRet
+    }).eq('id', id);
+    if (error) { toast('Error: ' + error.message, 'error'); return; }
     toast(`✅ Pedido #${id} finalizado`);
     cargarPedidos('despachado');
 }
 
 async function confirmarPago(id) {
+    // Modal con comprobante opcional
     abrirModalComprobante({
         pedidoId: id,
         titulo: `Confirmar pago - Pedido #${id}`,
-        subtitulo: 'Subí el comprobante del pago recibido.',
+        subtitulo: 'Subí el comprobante del pago recibido (o marcá la casilla).',
         onConfirmar: async ({ comprobanteFilename, sinComprobante, sinComprobanteNota }) => {
-            const updateData = {
+            const upd = {
                 pago_retiro_pendiente: false,
                 sin_comprobante: sinComprobante,
                 sin_comprobante_nota: sinComprobante ? sinComprobanteNota : null
             };
             if (comprobanteFilename) {
-                updateData.comprobante_pago_url = comprobanteFilename.url;
-                updateData.comprobante_pago_filename = comprobanteFilename.original;
+                upd.comprobante_pago_url = comprobanteFilename.url;
+                upd.comprobante_pago_filename = comprobanteFilename.original;
             }
-            const { error } = await supabaseClient
-                .from('pedidos')
-                .update(updateData)
-                .eq('id', id);
-            if (error) {
-                toast('Error: ' + error.message, 'error');
-                return false;
-            }
+            const { error } = await supabaseClient.from('pedidos').update(upd).eq('id', id);
+            if (error) { toast('Error: ' + error.message, 'error'); return false; }
             toast('💰 Pago confirmado');
             cargarPedidos('finalizado');
             return true;
@@ -495,223 +409,76 @@ async function confirmarPago(id) {
 }
 
 // ============================================
-// VER ARCHIVOS (factura/guía/comprobante)
-// ============================================
-async function verArchivo(bucket, filename) {
-    if (!filename) {
-        toast('No hay archivo', 'error');
-        return;
-    }
-
-    // 🔥 TRUCO: abrir la pestaña ANTES de la operación async
-    // Si la abrimos después de un await, los navegadores bloquean el popup
-    // porque ya no se considera "acción directa del usuario".
-    const nuevaPestana = window.open('', '_blank');
-    if (!nuevaPestana) {
-        toast('Tu navegador bloqueó la apertura. Habilitá popups para este sitio.', 'error');
-        return;
-    }
-    // Mostrar "Cargando..." mientras se genera la URL firmada
-    nuevaPestana.document.write('<p style="font-family:sans-serif;padding:2rem;">Cargando archivo...</p>');
-
-    // Generar URL firmada por 1 hora
-    const { data, error } = await supabaseClient.storage
-        .from(bucket)
-        .createSignedUrl(filename, 3600);
-
-    if (error) {
-        nuevaPestana.close();
-        toast('Error al obtener archivo: ' + error.message, 'error');
-        return;
-    }
-
-    // Redirigir la pestaña ya abierta al archivo
-    nuevaPestana.location.href = data.signedUrl;
-}
-
-// ============================================
-// CLIENTES (vista de listado simple)
-// ============================================
-async function cargarClientes() {
-    const lista = document.getElementById('lista-clientes');
-    if (!lista) return;
-    lista.innerHTML = '<p class="loading">Cargando...</p>';
-
-    const { data, error } = await supabaseClient
-        .from('clientes')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-    if (error) {
-        lista.innerHTML = `<p class="error">${error.message}</p>`;
-        return;
-    }
-    if (!data || data.length === 0) {
-        lista.innerHTML = '<p class="empty">No hay clientes cargados aún.</p>';
-        return;
-    }
-
-    const filtro = document.getElementById('filtro-clientes')?.value.toLowerCase().trim() || '';
-    const filtrados = filtro
-        ? data.filter(c =>
-            (c.nombre_completo || '').toLowerCase().includes(filtro) ||
-            (c.dni || '').includes(filtro))
-        : data;
-
-    lista.innerHTML = `
-        <table class="tabla-clientes">
-            <thead>
-                <tr><th>DNI</th><th>Nombre</th><th>Ciudad</th><th>Provincia</th><th>Envío</th><th>Tel</th></tr>
-            </thead>
-            <tbody>
-                ${filtrados.map(c => `
-                    <tr>
-                        <td>${c.dni}</td>
-                        <td>${c.nombre_completo}</td>
-                        <td>${c.ciudad || '-'}</td>
-                        <td>${c.provincia || '-'}</td>
-                        <td>${c.envio_preferido || '-'}</td>
-                        <td>${c.telefono || '-'}</td>
-                    </tr>
-                `).join('')}
-            </tbody>
-        </table>
-    `;
-}
-
-// ============================================
-// EVENT LISTENERS DE FILTROS
-// ============================================
-document.addEventListener('DOMContentLoaded', () => {
-    // Filtros de pendientes
-    ['pendientes', 'aprobados', 'despachados', 'finalizados'].forEach(seccion => {
-        const inputCliente = document.getElementById(`filtro-cliente-${seccion}`);
-        const inputEnvio = document.getElementById(`filtro-envio-${seccion}`);
-        const estado = seccion === 'pendientes' ? 'pendiente_aprobacion' : seccion.replace(/s$/, '');
-        if (inputCliente) inputCliente.addEventListener('input', () => cargarPedidos(estado));
-        if (inputEnvio) inputEnvio.addEventListener('change', () => cargarPedidos(estado));
-    });
-
-    // Filtro de pago retiro pendiente
-    const filtroPago = document.getElementById('filtro-pago-retiro');
-    if (filtroPago) filtroPago.addEventListener('change', () => cargarPedidos('finalizado'));
-
-    // Filtro de clientes
-    const filtroClientes = document.getElementById('filtro-clientes');
-    if (filtroClientes) filtroClientes.addEventListener('input', cargarClientes);
-});
-
-// ============================================
-// MODAL DE COMPROBANTE DE PAGO
+// MODAL COMPROBANTE (reutilizable)
 // ============================================
 function abrirModalComprobante({ pedidoId, titulo, subtitulo, onConfirmar }) {
-    // Crear el modal dinámicamente
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
     modal.innerHTML = `
         <div class="modal-box">
             <h3>${titulo}</h3>
             <p class="modal-subtitulo">${subtitulo}</p>
-
             <div class="modal-section">
-                <label class="modal-label">📎 Comprobante de pago (PDF, JPG o PNG):</label>
-                <input type="file" id="modal-comprobante-file" accept=".pdf,.jpg,.jpeg,.png">
+                <label class="modal-label">📎 Comprobante (PDF, JPG o PNG):</label>
+                <input type="file" id="m-file" accept=".pdf,.jpg,.jpeg,.png">
             </div>
-
             <div class="modal-divisor"><span>o</span></div>
-
             <div class="modal-section">
                 <label class="checkbox-label">
-                    <input type="checkbox" id="modal-sin-comprobante">
+                    <input type="checkbox" id="m-sin">
                     <span>No tengo comprobante (avanzar igual)</span>
                 </label>
-                <textarea id="modal-sin-comprobante-nota"
-                    placeholder="Explicá por qué no hay comprobante (obligatorio si tildás la casilla)..."
-                    rows="2" style="margin-top: 0.5rem; display: none;"></textarea>
+                <textarea id="m-nota" placeholder="Explicá por qué..." rows="2" style="margin-top:.5rem;display:none;"></textarea>
             </div>
-
             <div class="modal-acciones">
-                <button class="btn btn-secondary" id="modal-cancelar">Cancelar</button>
-                <button class="btn btn-primary" id="modal-confirmar">Confirmar</button>
+                <button class="btn btn-secondary" id="m-cancel">Cancelar</button>
+                <button class="btn btn-primary" id="m-ok">Confirmar</button>
             </div>
         </div>
     `;
     document.body.appendChild(modal);
-
-    const fileInput = modal.querySelector('#modal-comprobante-file');
-    const sinComprobanteCheck = modal.querySelector('#modal-sin-comprobante');
-    const sinComprobanteNota = modal.querySelector('#modal-sin-comprobante-nota');
-    const btnConfirmar = modal.querySelector('#modal-confirmar');
-    const btnCancelar = modal.querySelector('#modal-cancelar');
-
-    // Mostrar/ocultar nota según checkbox
-    sinComprobanteCheck.addEventListener('change', () => {
-        sinComprobanteNota.style.display = sinComprobanteCheck.checked ? 'block' : 'none';
-        // Si tilda la casilla, deshabilitar el file input (mutuamente excluyente)
-        fileInput.disabled = sinComprobanteCheck.checked;
-        if (sinComprobanteCheck.checked) fileInput.value = '';
+    const f = modal.querySelector('#m-file');
+    const s = modal.querySelector('#m-sin');
+    const n = modal.querySelector('#m-nota');
+    const btnOk = modal.querySelector('#m-ok');
+    s.addEventListener('change', () => {
+        n.style.display = s.checked ? 'block' : 'none';
+        f.disabled = s.checked;
+        if (s.checked) f.value = '';
     });
-
-    // Si suben archivo, destildar la casilla
-    fileInput.addEventListener('change', () => {
-        if (fileInput.files.length > 0) {
-            sinComprobanteCheck.checked = false;
-            sinComprobanteNota.style.display = 'none';
-        }
-    });
-
-    // Cancelar
-    btnCancelar.addEventListener('click', () => modal.remove());
-
-    // Confirmar
-    btnConfirmar.addEventListener('click', async () => {
-        const file = fileInput.files[0];
-        const sinComprobante = sinComprobanteCheck.checked;
-        const nota = sinComprobanteNota.value.trim();
-
-        // Validación: o archivo o casilla
-        if (!file && !sinComprobante) {
-            toast('Subí un comprobante o tildá "No tengo comprobante"', 'error');
-            return;
-        }
-        // Si tildó la casilla, exigir nota
-        if (sinComprobante && !nota) {
-            toast('Si no hay comprobante, explicá por qué', 'error');
-            return;
-        }
-
-        btnConfirmar.disabled = true;
-        btnConfirmar.textContent = 'Procesando...';
-
-        let comprobanteFilename = null;
-
-        // Subir archivo si hay
+    f.addEventListener('change', () => { if (f.files.length) { s.checked = false; n.style.display = 'none'; } });
+    modal.querySelector('#m-cancel').addEventListener('click', () => modal.remove());
+    btnOk.addEventListener('click', async () => {
+        const file = f.files[0];
+        const sin = s.checked;
+        const nota = n.value.trim();
+        if (!file && !sin) { toast('Subí archivo o tildá la casilla', 'error'); return; }
+        if (sin && !nota) { toast('Explicá por qué no hay comprobante', 'error'); return; }
+        btnOk.disabled = true; btnOk.textContent = 'Procesando...';
+        let cf = null;
         if (file) {
-            const filename = `comprobante_${pedidoId}_${Date.now()}_${sanitizeFilename(file.name)}`;
-            const { error: upErr } = await supabaseClient.storage
-                .from('comprobantes')
-                .upload(filename, file);
-            if (upErr) {
-                toast('Error al subir comprobante: ' + upErr.message, 'error');
-                btnConfirmar.disabled = false;
-                btnConfirmar.textContent = 'Confirmar';
-                return;
-            }
-            comprobanteFilename = { url: filename, original: file.name };
+            const fn = `comp_${pedidoId}_${Date.now()}_${sanitizeFilename(file.name)}`;
+            const { error } = await supabaseClient.storage.from('comprobantes').upload(fn, file);
+            if (error) { toast('Error: ' + error.message, 'error'); btnOk.disabled = false; btnOk.textContent = 'Confirmar'; return; }
+            cf = { url: fn, original: file.name };
         }
-
-        // Ejecutar callback
-        const ok = await onConfirmar({
-            comprobanteFilename,
-            sinComprobante,
-            sinComprobanteNota: nota
-        });
-
-        if (ok) {
-            modal.remove();
-        } else {
-            btnConfirmar.disabled = false;
-            btnConfirmar.textContent = 'Confirmar';
-        }
+        const ok = await onConfirmar({ comprobanteFilename: cf, sinComprobante: sin, sinComprobanteNota: nota });
+        if (ok) modal.remove();
+        else { btnOk.disabled = false; btnOk.textContent = 'Confirmar'; }
     });
 }
+
+// ============================================
+// FILTROS
+// ============================================
+document.addEventListener('DOMContentLoaded', () => {
+    ['nuevos', 'preparados', 'despachados', 'finalizados'].forEach(sec => {
+        const c = document.getElementById(`filtro-cliente-${sec}`);
+        const e = document.getElementById(`filtro-envio-${sec}`);
+        const estado = sec === 'nuevos' ? 'nuevo' : sec.replace(/s$/, '');
+        if (c) c.addEventListener('input', () => cargarPedidos(estado));
+        if (e) e.addEventListener('change', () => cargarPedidos(estado));
+    });
+    const fp = document.getElementById('filtro-pago-retiro');
+    if (fp) fp.addEventListener('change', () => cargarPedidos('finalizado'));
+});

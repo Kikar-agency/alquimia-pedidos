@@ -8,8 +8,7 @@
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-
-    <!-- ============== LOGIN ============== -->
+    <!-- LOGIN -->
     <div id="login-screen" class="login-screen">
         <div class="login-box">
             <h1>🧪 Alquimia</h1>
@@ -23,7 +22,7 @@
         </div>
     </div>
 
-    <!-- ============== APP ============== -->
+    <!-- APP -->
     <div id="app-screen" class="app-screen" style="display:none;">
         <header class="app-header">
             <h1>🧪 Alquimia</h1>
@@ -35,29 +34,29 @@
 
         <nav class="app-nav">
             <button class="nav-btn" data-section="nuevo">➕ Nuevo</button>
-            <button class="nav-btn active" data-section="pendientes">⏳ Pendientes</button>
-            <button class="nav-btn" data-section="aprobados">✅ Aprobados</button>
-            <button class="nav-btn" data-section="despachados">📦 Despachados</button>
+            <button class="nav-btn active" data-section="nuevos">📋 Nuevos</button>
+            <button class="nav-btn" data-section="preparados">📦 Preparados</button>
+            <button class="nav-btn" data-section="despachados">🚚 Despachados</button>
             <button class="nav-btn" data-section="finalizados">🏁 Finalizados</button>
             <button class="nav-btn" data-section="clientes">👥 Clientes</button>
+            <button class="nav-btn" data-section="transportes">🚛 Transportes</button>
         </nav>
 
         <main class="app-main">
 
-            <!-- ============== NUEVO PEDIDO ============== -->
+            <!-- NUEVO PEDIDO -->
             <section id="section-nuevo" class="section" style="display:none;">
                 <h2>Nuevo pedido</h2>
                 <form id="form-nuevo-pedido">
-
                     <div class="card">
                         <h3>1. Cliente</h3>
                         <div class="row">
-                            <input type="text" id="input-dni" placeholder="DNI del cliente" required>
+                            <input type="text" id="input-dni" placeholder="DNI del cliente">
                             <button type="button" id="btn-buscar-cliente" class="btn btn-secondary">🔍 Buscar</button>
                         </div>
                         <div id="cliente-encontrado" style="display:none; margin-top:1rem;"></div>
                         <div id="cliente-nuevo" style="display:none; margin-top:1rem;">
-                            <p class="info-msg">Cliente no encontrado. Completá los datos para registrarlo:</p>
+                            <p class="info-msg">Cliente no encontrado. Completá para registrarlo:</p>
                             <input type="text" id="nuevo-dni" placeholder="DNI">
                             <input type="text" id="nuevo-nombre" placeholder="Nombre completo">
                             <div class="row">
@@ -97,12 +96,13 @@
                                 <option value="BUSPACK">BUSPACK</option>
                                 <option value="OTRO">OTRO</option>
                             </select>
-
                             <select id="input-metodo-pago" required>
                                 <option value="anticipado">Pago anticipado</option>
                                 <option value="al_recibir">Pago al recibir / retiro</option>
                             </select>
                         </div>
+
+                        <input type="text" id="input-metodo-envio-detalle" placeholder="Aclaración de envío (ej: sucursal, comisionista, etc.) — opcional">
 
                         <textarea id="input-nota" placeholder="Nota / observaciones (opcional)" rows="2"></textarea>
 
@@ -112,18 +112,32 @@
                         </label>
                     </div>
 
+                    <div class="card" id="card-comprobante-inicial" style="display:none;">
+                        <h3>3. Comprobante de pago (anticipado)</h3>
+                        <p class="modal-subtitulo">Como el pedido es anticipado, tenés que subir el comprobante o marcar la casilla.</p>
+                        <label>Comprobante (PDF, JPG o PNG):</label>
+                        <input type="file" id="input-comprobante" accept=".pdf,.jpg,.jpeg,.png">
+                        <div class="modal-divisor"><span>o</span></div>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="input-sin-comprobante">
+                            <span>No tengo comprobante (avanzar igual)</span>
+                        </label>
+                        <textarea id="input-sin-comprobante-nota" placeholder="Explicá por qué no hay comprobante..." rows="2" style="margin-top:0.5rem; display:none;"></textarea>
+                    </div>
+
                     <button type="submit" id="btn-crear-pedido" class="btn btn-primary btn-block" style="display:none;">
                         Crear pedido
                     </button>
                 </form>
             </section>
 
-            <!-- ============== PENDIENTES ============== -->
-            <section id="section-pendientes" class="section">
-                <h2>⏳ Pendientes de aprobación</h2>
+            <!-- NUEVOS (=por preparar) -->
+            <section id="section-nuevos" class="section">
+                <h2>📋 Nuevos (por preparar)</h2>
+                <p class="hint">Urgentes arriba, después por antigüedad. Badge rojo si supera las 48hs hábiles.</p>
                 <div class="filtros">
-                    <input type="text" id="filtro-cliente-pendientes" placeholder="🔍 Cliente o DNI">
-                    <select id="filtro-envio-pendientes">
+                    <input type="text" id="filtro-cliente-nuevos" placeholder="🔍 Cliente o DNI">
+                    <select id="filtro-envio-nuevos">
                         <option value="">Todos los envíos</option>
                         <option value="VIA CARGO">VIA CARGO</option>
                         <option value="ANDREANI">ANDREANI</option>
@@ -132,16 +146,15 @@
                         <option value="OTRO">OTRO</option>
                     </select>
                 </div>
-                <div id="lista-pendientes" class="lista-pedidos"></div>
+                <div id="lista-nuevos" class="lista-pedidos"></div>
             </section>
 
-            <!-- ============== APROBADOS ============== -->
-            <section id="section-aprobados" class="section" style="display:none;">
-                <h2>✅ Aprobados (listos para fabricar/despachar)</h2>
-                <p class="hint">Urgentes arriba, después por antigüedad (más viejos primero).</p>
+            <!-- PREPARADOS -->
+            <section id="section-preparados" class="section" style="display:none;">
+                <h2>📦 Preparados (listos para despachar)</h2>
                 <div class="filtros">
-                    <input type="text" id="filtro-cliente-aprobados" placeholder="🔍 Cliente o DNI">
-                    <select id="filtro-envio-aprobados">
+                    <input type="text" id="filtro-cliente-preparados" placeholder="🔍 Cliente o DNI">
+                    <select id="filtro-envio-preparados">
                         <option value="">Todos los envíos</option>
                         <option value="VIA CARGO">VIA CARGO</option>
                         <option value="ANDREANI">ANDREANI</option>
@@ -150,12 +163,12 @@
                         <option value="OTRO">OTRO</option>
                     </select>
                 </div>
-                <div id="lista-aprobados" class="lista-pedidos"></div>
+                <div id="lista-preparados" class="lista-pedidos"></div>
             </section>
 
-            <!-- ============== DESPACHADOS ============== -->
+            <!-- DESPACHADOS -->
             <section id="section-despachados" class="section" style="display:none;">
-                <h2>📦 Despachados</h2>
+                <h2>🚚 Despachados</h2>
                 <div class="filtros">
                     <input type="text" id="filtro-cliente-despachados" placeholder="🔍 Cliente o DNI">
                     <select id="filtro-envio-despachados">
@@ -170,7 +183,7 @@
                 <div id="lista-despachados" class="lista-pedidos"></div>
             </section>
 
-            <!-- ============== FINALIZADOS ============== -->
+            <!-- FINALIZADOS -->
             <section id="section-finalizados" class="section" style="display:none;">
                 <h2>🏁 Finalizados</h2>
                 <div class="filtros">
@@ -191,28 +204,41 @@
                 <div id="lista-finalizados" class="lista-pedidos"></div>
             </section>
 
-            <!-- ============== CLIENTES ============== -->
+            <!-- CLIENTES -->
             <section id="section-clientes" class="section" style="display:none;">
-                <h2>👥 Clientes</h2>
+                <div class="section-header">
+                    <h2>👥 Clientes</h2>
+                    <button class="btn btn-primary" id="btn-nuevo-cliente">➕ Nuevo cliente</button>
+                </div>
                 <div class="filtros">
                     <input type="text" id="filtro-clientes" placeholder="🔍 Buscar por nombre o DNI">
                 </div>
                 <div id="lista-clientes"></div>
             </section>
 
+            <!-- TRANSPORTES -->
+            <section id="section-transportes" class="section" style="display:none;">
+                <div class="section-header">
+                    <h2>🚛 Transportes</h2>
+                    <button class="btn btn-primary" id="btn-nuevo-transporte">➕ Nuevo transporte</button>
+                </div>
+                <div class="filtros">
+                    <input type="text" id="filtro-transportes" placeholder="🔍 Buscar por nombre, destino o notas">
+                </div>
+                <div id="lista-transportes"></div>
+            </section>
+
         </main>
     </div>
 
-    <!-- Toast notifications -->
     <div id="toast" class="toast" style="display:none;"></div>
 
-    <!-- Supabase JS SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-    <!-- App scripts -->
     <script src="js/config.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/app.js"></script>
     <script src="js/pedidos.js"></script>
+    <script src="js/clientes.js"></script>
+    <script src="js/transportes.js"></script>
 </body>
 </html>
