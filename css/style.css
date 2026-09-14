@@ -175,3 +175,7 @@ label { display: block; margin: 0.5rem 0 0.25rem; font-size: 0.9rem; color: var(
 .hist-archivos { display: flex; gap: 0.25rem; flex-wrap: wrap; margin-top: 0.5rem; }
 .hist-tracking { font-size: 0.75rem; color: var(--gray-500); margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dashed var(--gray-200); }
 .badge-success { background: var(--success); color: white; }
+
+.cliente-opcion { background: white; border: 1px solid var(--gray-200); border-radius: var(--border-radius); padding: 0.75rem; margin-top: 0.5rem; cursor: pointer; transition: all 0.15s; }
+.cliente-opcion:hover { border-color: var(--primary); background: #eff6ff; }
+.cliente-opcion small { color: var(--gray-500); }

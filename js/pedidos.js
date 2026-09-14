@@ -11,39 +11,98 @@ function initNuevoPedido() {
     document.getElementById('form-nuevo-pedido').reset();
     document.getElementById('cliente-encontrado').style.display = 'none';
     document.getElementById('cliente-nuevo').style.display = 'none';
-    document.getElementById('card-comprobante-inicial').style.display = 'none';
     document.getElementById('btn-crear-pedido').style.display = 'none';
     document.getElementById('input-sin-comprobante-nota').style.display = 'none';
+    // El pago default es "anticipado" → mostrar tarjeta de comprobante desde el inicio
+    const metodoPago = document.getElementById('input-metodo-pago');
+    const card = document.getElementById('card-comprobante-inicial');
+    if (metodoPago && card) {
+        card.style.display = metodoPago.value === 'anticipado' ? 'block' : 'none';
+    }
+}
+
+// Búsqueda flexible: DNI o nombre
+async function buscarClienteFlex() {
+    const q = document.getElementById('input-dni').value.trim();
+    if (!q) { toast('Ingresá DNI o nombre', 'error'); return; }
+
+    // Si es numérico → buscar por DNI (exacto)
+    const esNumerico = /^\d+$/.test(q);
+
+    let query;
+    if (esNumerico) {
+        query = supabaseClient.from('clientes').select('*').eq('dni', q);
+    } else {
+        query = supabaseClient.from('clientes').select('*').ilike('nombre_completo', `%${q}%`).limit(10);
+    }
+
+    const { data, error } = await query;
+    if (error) { toast('Error buscando: ' + error.message, 'error'); return; }
+
+    if (!data || data.length === 0) {
+        // No hay resultados → mostrar form de nuevo cliente
+        clienteSeleccionado = null;
+        document.getElementById('cliente-encontrado').style.display = 'none';
+        document.getElementById('cliente-nuevo').style.display = 'block';
+        if (esNumerico) document.getElementById('nuevo-dni').value = q;
+        else document.getElementById('nuevo-nombre').value = q;
+        document.getElementById('btn-crear-pedido').style.display = 'inline-block';
+        return;
+    }
+
+    if (data.length === 1) {
+        seleccionarCliente(data[0]);
+        return;
+    }
+
+    // Múltiples resultados → mostrar lista
+    const cont = document.getElementById('cliente-encontrado');
+    cont.innerHTML = `
+        <div class="info-msg">Se encontraron ${data.length} clientes. Elegí uno:</div>
+        ${data.map(c => `
+            <div class="cliente-opcion" onclick='seleccionarClientePorId(${c.id})'>
+                ${c.es_frecuente ? '⭐ ' : ''}<strong>${c.nombre_completo}</strong>
+                <small>(DNI: ${c.dni})</small><br>
+                <small>${c.ciudad || '-'}, ${c.provincia || '-'} · ${c.envio_preferido || 'sin envío pref.'}</small>
+            </div>
+        `).join('')}
+    `;
+    cont.style.display = 'block';
+    document.getElementById('cliente-nuevo').style.display = 'none';
+    document.getElementById('btn-crear-pedido').style.display = 'none';
+}
+
+async function seleccionarClientePorId(id) {
+    const { data } = await supabaseClient.from('clientes').select('*').eq('id', id).single();
+    if (data) seleccionarCliente(data);
+}
+
+function seleccionarCliente(cliente) {
+    clienteSeleccionado = cliente;
+    document.getElementById('cliente-nuevo').style.display = 'none';
+    const frec = cliente.es_frecuente ? '⭐ ' : '';
+    const notas = cliente.notas ? `<div class="pedido-nota" style="margin-top:.5rem;"><b>Notas:</b> ${cliente.notas}</div>` : '';
+    document.getElementById('cliente-encontrado').innerHTML = `
+        <div class="cliente-card">
+            ${frec}<strong>${cliente.nombre_completo}</strong> (DNI: ${cliente.dni})<br>
+            ${cliente.direccion || ''} - ${cliente.ciudad || ''}, ${cliente.provincia || ''} (CP: ${cliente.cp || '-'})<br>
+            Envío preferido: <strong>${cliente.envio_preferido || '-'}</strong>
+            ${notas}
+        </div>
+    `;
+    document.getElementById('cliente-encontrado').style.display = 'block';
+    document.getElementById('btn-crear-pedido').style.display = 'inline-block';
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     const btnBuscar = document.getElementById('btn-buscar-cliente');
     if (btnBuscar) {
-        btnBuscar.addEventListener('click', async () => {
-            const dni = document.getElementById('input-dni').value.trim();
-            if (!dni) { toast('Ingresá un DNI', 'error'); return; }
-            const cliente = await buscarClientePorDNI(dni);
-            if (cliente) {
-                clienteSeleccionado = cliente;
-                document.getElementById('cliente-nuevo').style.display = 'none';
-                const frec = cliente.es_frecuente ? '⭐ ' : '';
-                const notas = cliente.notas ? `<div class="pedido-nota" style="margin-top:.5rem;"><b>Notas:</b> ${cliente.notas}</div>` : '';
-                document.getElementById('cliente-encontrado').innerHTML = `
-                    <div class="cliente-card">
-                        ${frec}<strong>${cliente.nombre_completo}</strong> (DNI: ${cliente.dni})<br>
-                        ${cliente.direccion || ''} - ${cliente.ciudad || ''}, ${cliente.provincia || ''} (CP: ${cliente.cp || '-'})<br>
-                        Envío preferido: <strong>${cliente.envio_preferido || '-'}</strong>
-                        ${notas}
-                    </div>
-                `;
-                document.getElementById('cliente-encontrado').style.display = 'block';
-            } else {
-                clienteSeleccionado = null;
-                document.getElementById('cliente-encontrado').style.display = 'none';
-                document.getElementById('cliente-nuevo').style.display = 'block';
-                document.getElementById('nuevo-dni').value = dni;
-            }
-            document.getElementById('btn-crear-pedido').style.display = 'inline-block';
+        btnBuscar.addEventListener('click', buscarClienteFlex);
+    }
+    const inputDni = document.getElementById('input-dni');
+    if (inputDni) {
+        inputDni.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); buscarClienteFlex(); }
         });
     }
 

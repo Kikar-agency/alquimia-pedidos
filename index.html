@@ -33,7 +33,7 @@
         </header>
 
         <nav class="app-nav">
-            <button class="nav-btn" data-section="nuevo">➕ Nuevo</button>
+            <button class="nav-btn" data-section="nuevo">➕ Cargar pedido</button>
             <button class="nav-btn active" data-section="nuevos">📋 Nuevos</button>
             <button class="nav-btn" data-section="preparados">📦 Preparados</button>
             <button class="nav-btn" data-section="despachados">🚚 Despachados</button>
@@ -46,12 +46,12 @@
 
             <!-- NUEVO PEDIDO -->
             <section id="section-nuevo" class="section" style="display:none;">
-                <h2>Nuevo pedido</h2>
+                <h2>Cargar pedido</h2>
                 <form id="form-nuevo-pedido">
                     <div class="card">
                         <h3>1. Cliente</h3>
                         <div class="row">
-                            <input type="text" id="input-dni" placeholder="DNI del cliente">
+                            <input type="text" id="input-dni" placeholder="DNI o nombre del cliente">
                             <button type="button" id="btn-buscar-cliente" class="btn btn-secondary">🔍 Buscar</button>
                         </div>
                         <div id="cliente-encontrado" style="display:none; margin-top:1rem;"></div>
